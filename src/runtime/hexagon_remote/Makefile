@@ -152,6 +152,10 @@ bin/%/sim_host.o: sim_host.cpp sim_protocol.h
 	mkdir -p $(@D)
 	$(CXX-$*) -std=c++11 $(CCFLAGS-$*) -c sim_host.cpp -o $@
 
+bin/%/sim_hap_vtcm.o: sim_hap_vtcm.cpp
+	mkdir -p $(@D)
+	$(CXX-$*) -std=c++11 $(CCFLAGS-$*) -c sim_hap_vtcm.cpp -o $@
+
 CRT0_STANDALONE=$(shell $(CXX-v60) -G0 -print-file-name=crt0_standalone.o)
 CRT0           =$(shell $(CXX-v60) -G0 -print-file-name=crt0.o)
 INIT           =$(shell $(CXX-v60) -G0 -print-file-name=init.o)
@@ -161,9 +165,9 @@ LIB_GCC        =$(shell $(CXX-v60) -G0 -print-file-name=libgcc.a)
 FINI           =$(shell $(CXX-v60) -G0 -print-file-name=fini.o)
 LIBDL          =$(HEXAGON_TOOLS_ROOT)/target/hexagon/lib/v60/G0/libdl.a
 
-bin/%/hexagon_sim_remote: bin/%/sim_remote.o bin/%/dlib.o bin/%/known_symbols.o
+bin/%/hexagon_sim_remote: bin/%/sim_remote.o bin/%/dlib.o bin/%/known_symbols.o bin/%/sim_hap_vtcm.o
 	mkdir -p $(@D)
-	$(LD-$*) -o $@ $(CRT0_STANDALONE) $(CRT0) $(INIT) bin/$*/sim_remote.o bin/$*/dlib.o bin/$*/known_symbols.o $(LIBDL) \
+	$(LD-$*) -o $@ $(CRT0_STANDALONE) $(CRT0) $(INIT) bin/$*/sim_remote.o bin/$*/dlib.o bin/$*/known_symbols.o bin/$*/sim_hap_vtcm.o $(LIBDL) \
 	--start-group  $(LIB_STANDALONE) --whole-archive $(LIB_C) --no-whole-archive $(LIB_GCC) --end-group $(FINI) \
 	--dynamic-linker= -E --force-dynamic
 	#$(CC-$*) -m$* -mG0lib -G0 -ldl -lc -lstandalone -lgcc  $^ $(LIBDL) -o $@
