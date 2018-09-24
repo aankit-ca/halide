@@ -13,9 +13,12 @@
 #include "Substitute.h"
 #include "HexagonAlignment.h"
 #include <unordered_map>
+#include "IRPrinter.h"
 
 namespace Halide {
 namespace Internal {
+
+IRPrinter irp2(std::cerr);
 
 using std::pair;
 using std::set;
@@ -1348,6 +1351,9 @@ class EliminateInterleaves : public IRMutator2 {
             "halide.hexagon.deinterleave.vb",
             "halide.hexagon.deinterleave.vh",
             "halide.hexagon.deinterleave.vw",
+            "scatter",
+            "scatter_acc",
+            "gather",
         };
         if (not_interleavable.count(op->name) != 0) return false;
 
@@ -2079,6 +2085,21 @@ class ScatterGatherGenerator : public IRMutator2 {
                           Call::Intrinsic);
     }
 
+    // Checks if the Store node has opportunities for scatter_accumulate.
+    // If yes, return new_value to be used for scatter-accumulate, else return
+    // parameter value.
+    Expr make_scatter_acc(string name, Expr index, Expr value) {
+        Expr lhs = Load::make(value.type(), name, index, Buffer<>(),
+                              Parameter(), const_true(value.type().lanes()));
+        Expr wild = Variable::make(value.type(), "*");
+        vector<Expr> matches;
+        if (expr_match(lhs + wild, value, matches) || expr_match(wild + lhs, value, matches)) {
+            // Scatter accumulate found
+            return matches[0];
+        }
+        return value;
+    }
+
     Stmt visit(const Store *op) {
         // HVX has only 16 or 32-bit gathers. Predicated vgathers are not
         // supported yet.
@@ -2104,7 +2125,84 @@ class ScatterGatherGenerator : public IRMutator2 {
                 return Evaluate::make(value);
             }
         }
+        // Check for scatter/scatter-accumulate.
+        if (op->index.as<Ramp>()) {
+            return IRMutator2::visit(op);
+        }
+        user_warning << "Scatter Found";
+        Expr size = ty.bytes();
+        for (size_t i = 0; i < alloc->extents.size(); i++) {
+            size *= alloc->extents[i];
+        }
+        Expr value = make_scatter_acc(op->name, op->index, op->value);
+        string intrinsic = "scatter";
+        if (!value.same_as(op->value)) {
+            // It's a scatter-accumulate
+            intrinsic = "scatter_acc";
+        }
+        Expr buffer = Variable::make(Handle(), op->name);
+        Expr index = mutate(cast(ty.with_code(Type::Int), ty.bytes() * op->index));
+        value = mutate(value);
+        Stmt scatter = Evaluate::make(Call::make(ty, intrinsic,
+                              {buffer, size-1, index, value}, Call::Intrinsic));
+        // Stmt scatter_sync = Evaluate::make(Call::make(Int(32), "halide_scatter_release",
+        //                                    {buffer}, Call::Extern));
+        // return Block::make(scatter, scatter_sync);
+        return scatter;
+    }
+};
+
+class SyncronizationBarriers : public IRMutator2 {
+    std::map<string, vector<Stmt *>> in_flight;
+    vector<Stmt *> curr_path;
+    Stmt *curr = NULL;
+    std::map<Stmt *, Expr> scatter_release;
+
+    using IRMutator2::visit;
+
+    Expr visit(const Call *op) {
+        if (op->name == "scatter" || op->name == "scatter_acc" || op->name == "gather") {
+            in_flight[op->args[0].as<Variable>()->name] = curr_path;
+        }
         return IRMutator2::visit(op);
+    }
+
+    Stmt visit(const For *op) {
+        curr_path.push_back(curr);
+        return IRMutator2::visit(op);
+    }
+
+    Expr visit(const Load *op) {
+        if (in_flight.find(op->name) != in_flight.end()) {
+            // Find lowest common ancestor
+            size_t min_size = std::min(in_flight[op->name].size(), curr_path.size());
+            size_t i = 0;
+            for (; i < min_size; i++) {
+                if (in_flight[op->name][i] != curr_path[i]) {
+                    break;
+                }
+            }
+            if (i < curr_path.size()) {
+                scatter_release[curr_path[i]] = Variable::make(Handle(), op->name);
+            } else {
+                // Make changes at previous place
+                scatter_release[curr] = Variable::make(Handle(), op->name);
+            }
+            in_flight.clear();
+        }
+        return IRMutator2::visit(op);
+    }
+
+public:
+    Stmt mutate(const Stmt &s) {
+        curr = (Stmt *) &s;
+        Stmt new_s = IRMutator2::mutate(s);
+        if (scatter_release.find((Stmt *)&s) != scatter_release.end()) {
+            Stmt scatter_sync = Evaluate::make(Call::make(Int(32), "halide_scatter_release",
+                                               {scatter_release[(Stmt *)&s]}, Call::Extern));
+            return Block::make(scatter_sync, new_s);
+        }
+        return new_s;
     }
 };
 
@@ -2127,6 +2225,7 @@ Stmt vtmpy_generator(Stmt s) {
 Stmt scatter_gather_generator(Stmt s) {
     // Generate vscatter-vgather instruction if target >= v65
     s = ScatterGatherGenerator().mutate(s);
+    s = SyncronizationBarriers().mutate(s);
     return s;
 }
 

@@ -15,4 +15,10 @@ WEAK void halide_vtcm_free(void *user_context, void *addr) {
     HAP_release_VTCM(addr);
 }
 
+__attribute__((always_inline))
+WEAK int halide_scatter_release(void *ptr) {
+    __asm__ __volatile__ ("vmem(%0 + #0):scatter_release\n;": "+m" (*(char *)ptr) : : );
+    return 0;
+}
+
 }

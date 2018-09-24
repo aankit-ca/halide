@@ -30,10 +30,8 @@ bool test() {
     hist(x) = HTYPE(0);
     hist(clamp(cast<int>(in(r.x, r.y)), 0, 255)) += HTYPE(1);
 
-    hist.compute_root();
-
     Func g;
-    g(x) = hist(x+10);
+    g(x) = hist(x);
 
     // No parallel reductions
     /*
@@ -52,23 +50,25 @@ bool test() {
 
         g
             .hexagon()
-            .vectorize(x, vector_size/2);
+            .vectorize(x, vector_size);
 
         hist
             .compute_at(g, Var::outermost())
             .store_in(MemoryType::VTCM)
-            .vectorize(x, vector_size/2);
+            .vectorize(x, vector_size);
 
         hist
             .update(0)
             .allow_race_conditions()
-            .vectorize(r.x, vector_size/2);
+            .vectorize(r.x, vector_size);
+    } else {
+        hist.compute_root();
     }
 
-    Buffer<int32_t> histogram = g.realize(10); // buckets 10-20 only
+    Buffer<int32_t> histogram = g.realize(256); // buckets 10-20 only
 
-    for (int i = 10; i < 20; i++) {
-        if (histogram(i-10) != reference_hist[i]) {
+    for (int i = 0; i < 256; i++) {
+        if (histogram(i) != reference_hist[i]) {
             printf("Error: bucket %d is %d instead of %d\n", i, histogram(i), reference_hist[i]);
             return false;
         }
