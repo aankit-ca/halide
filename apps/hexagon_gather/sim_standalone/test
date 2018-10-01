@@ -1,0 +1,19 @@
+#!/bin/bash
+set -x
+
+HALIDE_ROOT=/local/mnt/workspace/Halide-install/Halide-aankit/install
+
+rm -fr  pmu_statsfile.txt stats_dump.iss.0 pa_dump.core.0 ./bin
+mkdir bin
+
+${CXX} --std=c++11  -DLOG2VLEN=7 -DRUN=1 -DASSEMBLY=1 -DBITCODE=1 -I $HALIDE_ROOT/include -I ./../include -fno-rtti -O3 -g pipeline.cpp $HALIDE_ROOT/tools/GenGen.cpp -L$HALIDE_ROOT/lib  -lHalide -o bin/pipeline -ldl -lpthread -lz
+
+export LD_LIBRARY_PATH=$HALIDE_ROOT/lib:; ./bin/pipeline -o bin -g gather -e h,assembly,bitcode -f pipeline target=hexagon-32-noos-hvx_128-hvx_v65-no_asserts
+
+hexagon-clang++ -mhvx -mhvx-double -mv65 -c bin/pipeline.s -g -o bin/pipeline.o
+
+hexagon-clang++ --std=c++11 -c -mhvx -mhvx-double -mv65 -DLOG2VLEN=7 -I $HALIDE_ROOT/include -I ./bin -I ./../include process.cpp -g -o bin/process.o
+
+hexagon-clang++ -mhvx -mhvx-double -mv65 -DLOG2VLEN=7 bin/process.o bin/pipeline.o -lhexagon -L$HALIDE_ROOT/lib -lsim_qurt -lsim_qurt_vtcm -g -o bin/gather.out
+
+hexagon-sim bin/gather.out -mv65 --memfill 0x0 --simulated_returnval --timing --nullptr=2 --l2tcm_base 0xd800
