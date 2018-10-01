@@ -468,3 +468,13 @@ define weak_odr void @halide.hexagon.vscatter_acc.w.w(i8* %buf_ptr, i32 %size, <
   call void @llvm.hexagon.V6.vscattermw.add.128B(i32 %buf, i32 %size, <32 x i32> %idx, <32 x i32> %val)
   ret void
 }
+
+declare void @llvm.hexagon.V6.vS32b.srls.ai(i32, i32)
+
+define weak_odr i32 @halide.hexagon.scatter.release(i8* %buf_ptr) nounwind uwtable {
+  %buf = ptrtoint i8* %buf_ptr to i32
+  call void @llvm.hexagon.V6.vS32b.srls.ai(i32 %buf, i32 0)
+  %buf_vec = bitcast i8* %buf_ptr to <32 x i32>*
+  %stall = load volatile <32 x i32>, <32 x i32>* %buf_vec
+  ret i32 1
+}

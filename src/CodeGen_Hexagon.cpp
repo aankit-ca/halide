@@ -1962,8 +1962,13 @@ void CodeGen_Hexagon::visit(const Call *op) {
             value = builder->CreateCall(fn, args);
         }
         return;
+    } else if (op->is_intrinsic("scatter_release")) {
+        internal_assert(op->args.size() == 1);
+        Value *ptr = codegen(op->args[0]);
+        llvm::Function *fn = module->getFunction("halide.hexagon.scatter.release");
+        value = builder->CreateCall(fn, {ptr});
+        return;
     }
-
 
     CodeGen_Posix::visit(op);
 }
