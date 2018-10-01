@@ -2,7 +2,7 @@ include ../support/Makefile.inc
 
 BIN ?= bin
 
-FILTERS ?= conv3x3a16 dilate3x3 median3x3 gaussian5x5 sobel conv3x3a32
+FILTERS ?= conv3x3a16 # dilate3x3 median3x3 gaussian5x5 sobel conv3x3a32
 
 ITERATIONS ?= 10
 

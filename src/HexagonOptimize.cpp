@@ -2056,7 +2056,11 @@ class ScatterGatherGenerator : public IRMutator2 {
         }
         // HVX has only 16 or 32-bit gathers. Predicated vgathers are not
         // supported yet.
+<<<<<<< Updated upstream
         if (op->index.as<Ramp>() || !is_one(op->predicate) || !ty.is_vector() ||
+=======
+        if (op->index.as<Ramp>() || !is_one(op->predicate) || !ty.is_vector()||
+>>>>>>> Stashed changes
             ty.bits() == 8) {
             return Expr();
         }
@@ -2162,7 +2166,9 @@ class SyncronizationBarriers : public IRMutator2 {
 
     Expr visit(const Call *op) {
         if (op->name == "scatter" || op->name == "scatter_acc" || op->name == "gather") {
-            in_flight[op->args[0].as<Variable>()->name] = curr_path;
+            string name = op->args[0].as<Variable>()->name;
+            sync(name);
+            in_flight[name] = curr_path;
         }
         return IRMutator2::visit(op);
     }
@@ -2172,24 +2178,34 @@ class SyncronizationBarriers : public IRMutator2 {
         return IRMutator2::visit(op);
     }
 
-    Expr visit(const Load *op) {
-        if (in_flight.find(op->name) != in_flight.end()) {
-            // Find lowest common ancestor
-            size_t min_size = std::min(in_flight[op->name].size(), curr_path.size());
-            size_t i = 0;
-            for (; i < min_size; i++) {
-                if (in_flight[op->name][i] != curr_path[i]) {
-                    break;
-                }
-            }
-            if (i < curr_path.size()) {
-                scatter_release[curr_path[i]] = Variable::make(Handle(), op->name);
-            } else {
-                // Make changes at previous place
-                scatter_release[curr] = Variable::make(Handle(), op->name);
-            }
-            in_flight.clear();
+    void sync(string name) {
+        if (in_flight.find(name) == in_flight.end()) {
+            return;
         }
+        // Sync Needed. Find lowest common ancestor.
+        size_t min_size = std::min(in_flight[name].size(), curr_path.size());
+        size_t i = 0;
+        for (; i < min_size; i++) {
+            if (in_flight[name][i] != curr_path[i]) {
+                break;
+            }
+        }
+        if (i < curr_path.size()) {
+            scatter_release[curr_path[i]] = Variable::make(Handle(), name);
+        } else {
+            // Make changes at previous place
+            scatter_release[curr] = Variable::make(Handle(), name);
+        }
+        in_flight.clear();
+    }
+
+    Expr visit(const Load *op) {
+        sync(op->name);
+        return IRMutator2::visit(op);
+    }
+
+    Stmt visit(const Store *op) {
+        sync(op->name);
         return IRMutator2::visit(op);
     }
 
@@ -2198,8 +2214,8 @@ public:
         curr = (Stmt *) &s;
         Stmt new_s = IRMutator2::mutate(s);
         if (scatter_release.find((Stmt *)&s) != scatter_release.end()) {
-            Stmt scatter_sync = Evaluate::make(Call::make(Int(32), "halide_scatter_release",
-                                               {scatter_release[(Stmt *)&s]}, Call::Extern));
+            Stmt scatter_sync = Evaluate::make(Call::make(Int(32), "scatter_release",
+                                               {scatter_release[(Stmt *)&s]}, Call::Intrinsic));
             return Block::make(scatter_sync, new_s);
         }
         return new_s;
