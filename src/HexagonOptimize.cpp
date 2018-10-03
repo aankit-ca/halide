@@ -2056,11 +2056,7 @@ class ScatterGatherGenerator : public IRMutator2 {
         }
         // HVX has only 16 or 32-bit gathers. Predicated vgathers are not
         // supported yet.
-<<<<<<< Updated upstream
         if (op->index.as<Ramp>() || !is_one(op->predicate) || !ty.is_vector() ||
-=======
-        if (op->index.as<Ramp>() || !is_one(op->predicate) || !ty.is_vector()||
->>>>>>> Stashed changes
             ty.bits() == 8) {
             return Expr();
         }
