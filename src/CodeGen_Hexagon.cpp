@@ -1595,16 +1595,6 @@ int CodeGen_Hexagon::native_vector_bits() const {
     }
 }
 
-void CodeGen_Hexagon::visit(const Add *op) {
-    if (op->type.is_vector()) {
-        value = call_intrin(op->type,
-                            "halide.hexagon.add" + type_suffix(op->a, op->b, false),
-                            {op->a, op->b});
-    } else {
-        CodeGen_Posix::visit(op);
-    }
-}
-
 void CodeGen_Hexagon::visit(const Sub *op) {
     if (op->type.is_vector()) {
         value = call_intrin(op->type,
@@ -1627,42 +1617,6 @@ Expr maybe_scalar(Expr x) {
 }
 
 }  // namespace
-
-void CodeGen_Hexagon::visit(const Mul *op) {
-    if (op->type.is_vector()) {
-        value = call_intrin(op->type,
-                            "halide.hexagon.mul" + type_suffix(op->a, op->b),
-                            {op->a, op->b},
-                            true /*maybe*/);
-        if (value) return;
-
-        // Hexagon has mostly widening multiplies. Try to find a
-        // widening multiply we can use.
-        // TODO: It would probably be better to just define a bunch of
-        // mul.*.* functions in the runtime HVX modules so the above
-        // implementation can be used unconditionally.
-        value = call_intrin(op->type,
-                            "halide.hexagon.mpy" + type_suffix(op->a, op->b),
-                            {op->a, op->b},
-                            true /*maybe*/);
-        if (value) {
-            // We found a widening op, we need to narrow back
-            // down. The widening multiply deinterleaved the result,
-            // but the trunc operation reinterleaves.
-            Type wide = op->type.with_bits(op->type.bits()*2);
-            value = call_intrin(llvm_type_of(op->type),
-                                "halide.hexagon.trunc" + type_suffix(wide, false),
-                                {value});
-            return;
-        }
-
-        internal_error << "Unhandled HVX multiply "
-                       << op->a.type() << "*" << op->b.type() << "\n"
-                       << Expr(op) << "\n";
-    } else {
-        CodeGen_Posix::visit(op);
-    }
-}
 
 Expr CodeGen_Hexagon::mulhi_shr(Expr a, Expr b, int shr) {
     Type ty = a.type();
