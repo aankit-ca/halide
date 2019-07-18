@@ -4,7 +4,7 @@ include ../support/autoscheduler.inc
 all: $(BIN)/test
 
 PIPELINE_SEED ?= 0
-PIPELINE_STAGES ?= 20
+PIPELINE_STAGES ?= 5
 HL_RANDOM_DROPOUT ?= 100
 HL_SEED ?= 0
 HL_BEAM_SIZE ?= 1
