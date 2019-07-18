@@ -27,7 +27,7 @@ void *my_malloc(void *ucon, size_t sz) {
 }
 
 int main(int argc, char **argv) {
-    Buffer<float> output(2000, 2000, 3);
+    Buffer<int32_t> output(300, 300, 3);
 
     for (int y = 0; y < output.height(); y++) {
         for (int x = 0; x < output.width(); x++) {
@@ -37,14 +37,13 @@ int main(int argc, char **argv) {
         }
     }
 
-    Buffer<float> input;
+    Buffer<int32_t> input;
     Buffer<uint8_t>  uint8_weights;
     Buffer<uint16_t>  uint16_weights;
     Buffer<uint32_t>  uint32_weights;
     Buffer<int8_t>  int8_weights;
     Buffer<int16_t>  int16_weights;
     Buffer<int32_t>  int32_weights;
-    Buffer<float>  float32_weights;
 
     assert(input.is_bounds_query());
     assert(uint8_weights.is_bounds_query());
@@ -53,7 +52,6 @@ int main(int argc, char **argv) {
     assert(int8_weights.is_bounds_query());
     assert(int16_weights.is_bounds_query());
     assert(int32_weights.is_bounds_query());
-    assert(float32_weights.is_bounds_query());
 
     random_pipeline(input,
                     uint8_weights,
@@ -62,11 +60,10 @@ int main(int argc, char **argv) {
                     int8_weights,
                     int16_weights,
                     int32_weights,
-                    float32_weights,
                     output);
 
     input.allocate();
-    input.fill(0.0f);
+    input.fill(0);
     uint8_weights.allocate();
     uint8_weights.fill(0);
     uint16_weights.allocate();
@@ -79,8 +76,6 @@ int main(int argc, char **argv) {
     int16_weights.fill(0);
     int32_weights.allocate();
     int32_weights.fill(0);
-    float32_weights.allocate();
-    float32_weights.fill(0);
 
     printf("Input size: %d %d %d\n", input.width(), input.height(), input.channels());
 
@@ -95,7 +90,6 @@ int main(int argc, char **argv) {
                             int8_weights,
                             int16_weights,
                             int32_weights,
-                            float32_weights,
                             output);
         }, config);
     printf("Time: %g\n", best * 1e3);

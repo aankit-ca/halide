@@ -25,7 +25,7 @@ std::mt19937 rng;
 // Helpers to generate random values.
 int rand_int(int min, int max) { return (rng() % (max - min + 1)) + min; }
 bool rand_bool() { return rng() % 2 == 0; }
-float rand_float() { return rand_int(0, 1 << 30) / (float)(1 << 30); }
+// float rand_float() { return rand_int(0, 1 << 30) / (float)(1 << 30); }
 
 // Generate random expressions. Given a vector of expresions and a
 // tree depth, recursively generates an expression by combining
@@ -183,9 +183,11 @@ Expr rand_value(Type t) {
         return cast(t, rand_int(0,1));
     } else if (t.is_int() || t.is_uint()) {
         return cast(t, rand_int(1, 127));
+#if 0
     } else if (t.is_float()) {
       assert(false);
         return cast(t, rand_float());
+#endif
     } else {
         // Shouldn't get here.
         assert(false);
@@ -202,13 +204,13 @@ Expr random_expr(vector<Expr> inputs, int depth, int func_size) {
         Expr result =
             Internal::simplify(Internal::common_subexpression_elimination(random_expr_inner(inputs, depth, func_size)));
 
-        class Checker : public Internal::IRMutator2 {
+        class Checker : public Internal::IRMutator {
         public:
             Expr mutate(const Expr &e) override {
                 exprs_to_find.erase(e);
-                return IRMutator2::mutate(e);
+                return IRMutator::mutate(e);
             }
-            using Internal::IRMutator2::mutate;
+            using Internal::IRMutator::mutate;
             std::set<Expr, Internal::IRDeepCompare> exprs_to_find;
             Checker(const vector<Expr> &inputs) {
                 for (const auto &e : inputs) {
@@ -463,7 +465,7 @@ public:
         activation(f.func.args()) = max(cast(output_type, 0), cast(output_type,f.func(coords)));
         return {activation, f.w, f.h, f.c};
     }
-
+#if 0
     Stage tanh_layer(Stage f) {
       assert(false);
         std::cout << "Tanh\n";
@@ -478,7 +480,7 @@ public:
         activation(f.func.args()) = (exp_pos - 1) / (exp_pos + 1);
         return {activation, f.w, f.h, f.c};
     }
-
+#endif
     Stage pool2D_unrolled(Stage f, int kernel_min, int kernel_max) {
         vector<Var> args = f.func.args();
         Func pooled2D("pooled2D" + args[0].name() + args[1].name());
@@ -514,7 +516,8 @@ public:
             }
         }
 
-        if (!def.type().is_bool()) {
+        if (!def.type().is_bool() && def.type().bits() < 32) {
+            // TODO(aankit): Change scaling
             def /= scale;
         }
 
@@ -548,7 +551,11 @@ public:
             pooled2D_r(args) = const_true();
             pooled2D_r(args) = pooled2D_r(args) && f.func(coords);
         } else {
-            pooled2D_r(args) += f.func(coords) / scale;
+            // TODO(aankit): Change scaling
+            if (ty.bits() < 32)
+                pooled2D_r(args) += f.func(coords) / scale;
+            else
+                pooled2D_r(args) += f.func(coords);
         }
 
         return {pooled2D_r, (f.w + stride - 1) / stride, (f.h + stride - 1) / stride, f.c};
@@ -577,7 +584,12 @@ public:
 #if 0
         pooled2D_w(args) = sum(cast<float>(f.func(coords))) / scale;
 #else
-        pooled2D_w(args) = sum(cast<int32_t>(f.func(coords))) / scale;
+        // TODO(aankit): Change scaling
+        Expr val = sum(cast<int32_t>(f.func(coords)));
+        if (val.type().bits() < 32)
+            pooled2D_w(args) = val / scale;
+        else
+            pooled2D_w(args) = val;
 #endif
         return {pooled2D_w, (f.w + stride - 1) / stride, (f.h + stride - 1) / stride, f.c};
     }
@@ -730,7 +742,11 @@ public:
             s1 = cast(sum_type, s1);
             s2 = cast(sum_type, s2);
 
-            resampled(f.func.args()) = cast(input_type, ((factor - x) * s1 + x * s2) / (2*factor));
+            // TODO(aankit): Change scaling
+            if (input_type.bits() < 32)
+                resampled(f.func.args()) = cast(input_type, ((factor - x) * s1 + x * s2) / (2*factor));
+            else
+                resampled(f.func.args()) = cast(input_type, ((factor - x) * s1 + x * s2));
         }
 
         Stage s {resampled, f.w, f.h, f.c};
@@ -803,7 +819,7 @@ public:
         binary(f.func.args()) = def;
         return {binary, f.w, f.h, std::min(f.c, g.c)};
     }
-
+#if 0
     Stage unary_op(Stage f) {
         std::cout << "Unary op\n";
         Func unary("unary_op");
@@ -822,7 +838,7 @@ public:
         }
         return {unary, f.w, f.h, f.c};
     }
-
+#endif
     // Generate an all-to-all communication in dimension dim,
     // statically unrolled. Currently only every applied over the
     // channels dimension.
@@ -832,7 +848,8 @@ public:
         if (f.c > 16) return all_to_all_r(f, dim);
 
         vector<Expr> reduction_coords = make_arguments(f.func.args());
-        Expr e = 0.f;
+        // Expr e = 0.f;
+        Expr e = 0;
         for (int i = 0; i < f.c; i++) {
             reduction_coords[dim] = i;
             e += f.func(reduction_coords) * ((i + 1) * f.c + (f.func.args()[dim] + 1));
@@ -1037,9 +1054,9 @@ public:
         } else if (stage_type == 12) {
             int dim = rand_int(0, 2);
             return scan(f, dim);
+#if 0   // Uses types not available on HVX
         } else if (stage_type == 13 && f.size() < 10000) {
             return unary_op(f);
-#if 0 // Uses types not available on HVX
         } else if (stage_type == 14 && f.w > 32 && f.h > 32) {
             return tiled_histogram(f);
 #endif
@@ -1061,33 +1078,40 @@ public:
         Func first;
         first(x, y, c) = input(x, y, c);
 
+        int W=300;
+        int H=300;
         vector<Stage> stages;
         // Assume input starts at ~2000x2000
-        stages.emplace_back(Stage{first, 2000, 2000, 3});
+        // stages.emplace_back(Stage{first, 2000, 2000, 3});
+        stages.emplace_back(Stage{first, W, H, 3});
 
         for (int i = 0; i < max_stages - 2; i++) {
             std::cout << "Approx size: " << stages.back().w << ", " << stages.back().h << ", " << stages.back().c << "\n";
             Stage next = random_stage(stages);
             stages.push_back(next);
             if (!auto_schedule) {
-	        stages.back().func.hexagon().compute_root().reorder(x, c, y).vectorize(x, 8).parallel(y, 8);
+                stages.back().func.compute_root().reorder(x, c, y).vectorize(x, 8).parallel(y, 8);
+                if (get_target().features_any_of({Target::HVX_64, Target::HVX_128}))
+                    stages.back().func.hexagon();
             }
         }
 
         Stage tail = stages.back();
 
         // Resample back to the correct resolution
-        tail = resample_to(tail, 2000, 2000, 3);
+        // tail = resample_to(tail, 2000, 2000, 3);
+        tail = resample_to(tail, W, H, 3);
         Stage casted = cast_stage(output.type(), tail);
         output = casted.func;
 
         if (!auto_schedule) {
-	    output.hexagon().compute_root().reorder(x, c, y).vectorize(x, 8).parallel(y);
+            output.compute_root().reorder(x, c, y).vectorize(x, 8).parallel(y);
+            if (get_target().features_any_of({Target::HVX_64, Target::HVX_128}))
+                output.hexagon();
         }
-
         if (auto_schedule) {
-            input.dim(0).set_bounds_estimate(0, 2000)
-                .dim(1).set_bounds_estimate(0, 2000)
+            input.dim(0).set_bounds_estimate(0, W)
+                .dim(1).set_bounds_estimate(0, H)
                 .dim(2).set_bounds_estimate(0, 3);
             uint8_weights.dim(0).set_bounds_estimate(0, 512)
                 .dim(1).set_bounds_estimate(-5, 5)
@@ -1120,12 +1144,12 @@ public:
                 .dim(3).set_bounds_estimate(0, 512);
 #endif
 
-            output.estimate(output.args()[0], 0, 2000);
-            output.estimate(output.args()[1], 0, 2000);
+            output.estimate(output.args()[0], 0, W);
+            output.estimate(output.args()[1], 0, H);
             output.estimate(output.args()[2], 0, 3);
 
-            output.dim(0).set_bounds_estimate(0, 2000);
-            output.dim(1).set_bounds_estimate(0, 2000);
+            output.dim(0).set_bounds_estimate(0, W);
+            output.dim(1).set_bounds_estimate(0, H);
             output.dim(2).set_bounds_estimate(0, 3);
         }
     }
