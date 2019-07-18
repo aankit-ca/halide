@@ -1,7 +1,10 @@
 #include "IRVisitor.h"
+#include "IRPrinter.h"
 
 namespace Halide {
 namespace Internal {
+
+Halide::Internal::IRPrinter irp(std::cerr); 
 
 IRVisitor::~IRVisitor() {
 }
