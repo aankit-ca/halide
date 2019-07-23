@@ -998,8 +998,18 @@ struct FunctionDAG {
                     node.bytes_per_point = bytes_per_point;
                 }
 
-                stage.vector_size = target.natural_vector_size(checker.narrowest_type);
-                stage.output_vector_size = target.natural_vector_size(widest_output_type);
+                // Temporary change for setting native vector size
+                // for hexagon offloaded cases. This assumes that
+                // all stages are offloaded to hexagon and hence is
+                // an incorrect change.
+                if (target.has_feature(Target::HVX_128)) {
+                    stage.vector_size = 128 / checker.narrowest_type.bytes();
+                    stage.output_vector_size = 128 / widest_output_type.bytes();
+                }
+                else {
+                    stage.vector_size = target.natural_vector_size(checker.narrowest_type);
+                    stage.output_vector_size = target.natural_vector_size(widest_output_type);
+                }
 
                 if (s == 0) {
                     node.vector_size = stage.vector_size;
