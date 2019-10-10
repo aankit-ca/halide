@@ -197,13 +197,13 @@ Expr random_expr(vector<Expr> inputs, int depth, int func_size) {
         Expr result =
             Internal::simplify(Internal::common_subexpression_elimination(random_expr_inner(inputs, depth, func_size)));
 
-        class Checker : public Internal::IRMutator2 {
+        class Checker : public Internal::IRMutator {
         public:
             Expr mutate(const Expr &e) override {
                 exprs_to_find.erase(e);
-                return IRMutator2::mutate(e);
+                return IRMutator::mutate(e);
             }
-            using Internal::IRMutator2::mutate;
+            using Internal::IRMutator::mutate;
             std::set<Expr, Internal::IRDeepCompare> exprs_to_find;
             Checker(const vector<Expr> &inputs) {
                 for (const auto &e : inputs) {
@@ -1065,45 +1065,45 @@ public:
         }
 
         if (auto_schedule) {
-            input.dim(0).set_bounds_estimate(0, 2000)
-                .dim(1).set_bounds_estimate(0, 2000)
-                .dim(2).set_bounds_estimate(0, 3);
-            uint8_weights.dim(0).set_bounds_estimate(0, 512)
-                .dim(1).set_bounds_estimate(-5, 5)
-                .dim(2).set_bounds_estimate(-5, 5)
-                .dim(3).set_bounds_estimate(0, 512);
-            uint16_weights.dim(0).set_bounds_estimate(0, 512)
-                .dim(1).set_bounds_estimate(-5, 5)
-                .dim(2).set_bounds_estimate(-5, 5)
-                .dim(3).set_bounds_estimate(0, 512);
-            uint32_weights.dim(0).set_bounds_estimate(0, 512)
-                .dim(1).set_bounds_estimate(-5, 5)
-                .dim(2).set_bounds_estimate(-5, 5)
-                .dim(3).set_bounds_estimate(0, 512);
-            int8_weights.dim(0).set_bounds_estimate(0, 512)
-                .dim(1).set_bounds_estimate(-5, 5)
-                .dim(2).set_bounds_estimate(-5, 5)
-                .dim(3).set_bounds_estimate(0, 512);
-            int16_weights.dim(0).set_bounds_estimate(0, 512)
-                .dim(1).set_bounds_estimate(-5, 5)
-                .dim(2).set_bounds_estimate(-5, 5)
-                .dim(3).set_bounds_estimate(0, 512);
-            int32_weights.dim(0).set_bounds_estimate(0, 512)
-                .dim(1).set_bounds_estimate(-5, 5)
-                .dim(2).set_bounds_estimate(-5, 5)
-                .dim(3).set_bounds_estimate(0, 512);
-            float32_weights.dim(0).set_bounds_estimate(0, 512)
-                .dim(1).set_bounds_estimate(-5, 5)
-                .dim(2).set_bounds_estimate(-5, 5)
-                .dim(3).set_bounds_estimate(0, 512);
+            input.dim(0).set_estimate(0, 2000)
+                .dim(1).set_estimate(0, 2000)
+                .dim(2).set_estimate(0, 3);
+            uint8_weights.dim(0).set_estimate(0, 512)
+                .dim(1).set_estimate(-5, 5)
+                .dim(2).set_estimate(-5, 5)
+                .dim(3).set_estimate(0, 512);
+            uint16_weights.dim(0).set_estimate(0, 512)
+                .dim(1).set_estimate(-5, 5)
+                .dim(2).set_estimate(-5, 5)
+                .dim(3).set_estimate(0, 512);
+            uint32_weights.dim(0).set_estimate(0, 512)
+                .dim(1).set_estimate(-5, 5)
+                .dim(2).set_estimate(-5, 5)
+                .dim(3).set_estimate(0, 512);
+            int8_weights.dim(0).set_estimate(0, 512)
+                .dim(1).set_estimate(-5, 5)
+                .dim(2).set_estimate(-5, 5)
+                .dim(3).set_estimate(0, 512);
+            int16_weights.dim(0).set_estimate(0, 512)
+                .dim(1).set_estimate(-5, 5)
+                .dim(2).set_estimate(-5, 5)
+                .dim(3).set_estimate(0, 512);
+            int32_weights.dim(0).set_estimate(0, 512)
+                .dim(1).set_estimate(-5, 5)
+                .dim(2).set_estimate(-5, 5)
+                .dim(3).set_estimate(0, 512);
+            float32_weights.dim(0).set_estimate(0, 512)
+                .dim(1).set_estimate(-5, 5)
+                .dim(2).set_estimate(-5, 5)
+                .dim(3).set_estimate(0, 512);
 
-            output.estimate(output.args()[0], 0, 2000);
-            output.estimate(output.args()[1], 0, 2000);
-            output.estimate(output.args()[2], 0, 3);
+            output.set_estimate(output.args()[0], 0, 2000);
+            output.set_estimate(output.args()[1], 0, 2000);
+            output.set_estimate(output.args()[2], 0, 3);
 
-            output.dim(0).set_bounds_estimate(0, 2000);
-            output.dim(1).set_bounds_estimate(0, 2000);
-            output.dim(2).set_bounds_estimate(0, 3);
+            output.dim(0).set_estimate(0, 2000);
+            output.dim(1).set_estimate(0, 2000);
+            output.dim(2).set_estimate(0, 3);
         }
     }
 };
