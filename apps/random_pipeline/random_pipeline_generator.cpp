@@ -347,6 +347,19 @@ public:
             if (min >= max) return min;
             return rand_int(min, max);
         }
+
+        int get_dim_extent(int dim) const {
+            switch(dim) {
+                case 0:
+                    return w;
+                case 1:
+                    return h;
+                case 2:
+                    return c;
+                default:
+                    assert(false);
+            }
+        }
     };
 
     // Generate a random convolution of one dimension of f, statically unrolled.
@@ -360,7 +373,7 @@ public:
         vector<Expr> inputs;
         for (int i = kernel_min; i <= kernel_max; i++) {
             vector<Expr> coords = make_arguments(f.func.args());
-            coords[dim] += i;
+            coords[dim] = clamp(coords[dim] + i, 0, f.get_dim_extent(dim) - 1);
             inputs.push_back(f.func(coords));
         }
         int min_depth = std::floor(std::log(kernel_max - kernel_min + 1));
@@ -385,7 +398,7 @@ public:
         Func conv("conv_r_" + args[dim].name());
         RDom r(kernel_min, kernel_max - kernel_min + 1);
         vector<Expr> coords = make_arguments(f.func.args());
-        coords[dim] += r;
+        coords[dim] = clamp(coords[dim] + r, 0, f.get_dim_extent(dim) - 1);
         conv(args) += rand_value(f.func.value().type()) * f.func(coords);
 
         return {conv, f.w, f.h, f.c};
@@ -402,7 +415,7 @@ public:
         Func conv("conv_w_" + args[dim].name());
         RDom r(kernel_min, kernel_max - kernel_min + 1);
         vector<Expr> coords = make_arguments(f.func.args());
-        coords[dim] += r;
+        coords[dim] = clamp(coords[dim] + r, 0, f.get_dim_extent(dim) - 1);
         conv(args) = sum(rand_value(f.func.value().type()) * f.func(coords));
 
         return {conv, f.w, f.h, f.c};
@@ -492,8 +505,8 @@ public:
         for (int i = kernel_min; i <= kernel_max; i++) {
             for (int j = kernel_min; j <= kernel_max; j++) {
                 vector<Expr> pooled_coords = make_arguments(f.func.args());
-                pooled_coords[0] = pooled_coords[0] * stride + i;
-                pooled_coords[1] = pooled_coords[1] * stride + j;
+                pooled_coords[0] = clamp(pooled_coords[0] * stride + i, 0, f.get_dim_extent(0) - 1);
+                pooled_coords[1] = clamp(pooled_coords[1] * stride + j, 0, f.get_dim_extent(1) - 1);
                 if (def.type().is_bool()) {
                     def = def && f.func(pooled_coords);
                 } else {
@@ -530,8 +543,8 @@ public:
 
         vector<Expr> coords = make_arguments(f.func.args());
         Type ty = f.func.value().type();
-        coords[0] = coords[0] * stride + r.x;
-        coords[1] = coords[1] * stride + r.y;
+        coords[0] = clamp(coords[0] * stride + r.x, 0, f.get_dim_extent(0) - 1);
+        coords[1] = clamp(coords[1] * stride + r.y, 0, f.get_dim_extent(1) - 1);
         if (ty.is_bool()) {
             pooled2D_r(args) = const_true();
             pooled2D_r(args) = pooled2D_r(args) && f.func(coords);
@@ -560,8 +573,8 @@ public:
                kernel_min, extent);
 
         vector<Expr> coords = make_arguments(f.func.args());
-        coords[0] = (coords[0] * stride + r.x);
-        coords[1] = (coords[1] * stride + r.y);
+        coords[0] = clamp(coords[0] * stride + r.x, 0, f.get_dim_extent(0) - 1);
+        coords[1] = clamp(coords[1] * stride + r.y, 0, f.get_dim_extent(1) - 1);
         pooled2D_w(args) = sum(cast<float>(f.func(coords))) / scale;
 
         return {pooled2D_w, (f.w + stride - 1) / stride, (f.h + stride - 1) / stride, f.c};
@@ -582,9 +595,9 @@ public:
             for (int i = kernel_min; i <= kernel_max; i++) {
                 for (int j = kernel_min; j <= kernel_max; j++) {
                     vector<Expr> coords = make_arguments(f.func.args());
-                    coords[0] += i;
-                    coords[1] += j;
-                    coords[2] = c;
+                    coords[0] = clamp(coords[0] + i, 0 , f.get_dim_extent(0) - 1);
+                    coords[1] = clamp(coords[1] + j, 0 , f.get_dim_extent(1) - 1);
+                    coords[2] = clamp(coords[2] + c, 0 , f.get_dim_extent(2) - 1);
                     inputs.push_back(f.func(coords));
                 }
             }
@@ -631,8 +644,8 @@ public:
                0, f.c);
 
         vector<Expr> coords = make_arguments(f.func.args());
-        coords[0] = coords[0] * stride + r.x; // only stride in w and h
-        coords[1] = coords[1] * stride + r.y;
+        coords[0] = clamp(coords[0] * stride + r.x, 0, f.get_dim_extent(0) - 1); // only stride in w and h
+        coords[1] = clamp(coords[1] * stride + r.y, 0, f.get_dim_extent(1) - 1);
         coords[2] = r.z;
         conv(args) += cast(sum_type, cast(mult_type, weights(r.z, r.x, r.y, args[2]) * f.func(coords)));
 
@@ -668,8 +681,8 @@ public:
                kernel_min, extent,
                0, f.c);
         vector<Expr> coords = make_arguments(f.func.args());
-        coords[0] = coords[0] * stride + r.x;
-        coords[1] = coords[1] * stride + r.y;
+        coords[0] = clamp(coords[0] * stride + r.x, 0, f.get_dim_extent(0) - 1); // only stride in w and h
+        coords[1] = clamp(coords[1] * stride + r.y, 0, f.get_dim_extent(1) - 1);
         coords[2] = r.z;
         // sum() captures free vars in the order found, and the new
         // autoscheduler isn't clever enough to do storage reordering
@@ -705,7 +718,7 @@ public:
             Expr x = resampled_coords[dim];
             resampled_coords[dim] = x / factor;
             Expr s1 = f.func(resampled_coords);
-            resampled_coords[dim] += 1;
+            resampled_coords[dim] = clamp(resampled_coords[dim] + 1, 0, f.get_dim_extent(dim) - 1);
             Expr s2 = f.func(resampled_coords);
             x = x % factor;
 
@@ -748,7 +761,7 @@ public:
             resampled_coords[dim] = resampled_coords[dim] * factor;
             Expr e = cast(f.func.value().type(), 0);
             for (int i = 0; i < factor; i++) {
-                resampled_coords[dim] += 1;
+                resampled_coords[dim] = clamp(resampled_coords[dim] + 1, 0, f.get_dim_extent(dim) - 1);;
                 e += f.func(resampled_coords);
             }
             resampled(f.func.args()) = e;
@@ -1065,8 +1078,8 @@ public:
         }
 
         if (auto_schedule) {
-            input.dim(0).set_estimate(0, 2000)
-                .dim(1).set_estimate(0, 2000)
+            input.dim(0).set_estimate(0, 2048)
+                .dim(1).set_estimate(0, 2048)
                 .dim(2).set_estimate(0, 3);
             uint8_weights.dim(0).set_estimate(0, 512)
                 .dim(1).set_estimate(-5, 5)

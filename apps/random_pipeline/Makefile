@@ -8,6 +8,7 @@ HL_RANDOM_DROPOUT ?= 100
 HL_SEED ?= 0
 HL_BEAM_SIZE ?= 1
 HL_USE_MANUAL_COST_MODEL ?= 0
+WEIGHTS ?= $(AUTOSCHED_SRC)/baseline.weights
 
 ifeq ($(NEW_AUTOSCHEDULER),1)
 ID = $(HL_TARGET)-new_autoscheduler/pipeline_$(PIPELINE_SEED)_$(PIPELINE_STAGES)/schedule_$(HL_SEED)_$(HL_RANDOM_DROPOUT)_$(HL_BEAM_SIZE)_$(HL_USE_MANUAL_COST_MODEL)
@@ -37,10 +38,11 @@ $(BIN)/$(ID)/random_pipeline.a: $(BIN)/random_pipeline.generator $(AUTOSCHEDULER
 	HL_SEED=$(HL_SEED) \
 	HL_BEAM_SIZE=$(HL_BEAM_SIZE) \
 	HL_USE_MANUAL_COST_MODEL=$(HL_USE_MANUAL_COST_MODEL) \
-	HL_DEBUG_CODEGEN=1 \
 	HL_FEATURE_FILE=$(BIN)/$(ID)/binary_features.bin \
 	HL_PERMIT_FAILED_UNROLL=1 \
+	HL_WEIGHTS_DIR=$(WEIGHTS) \
 	$(BIN)/random_pipeline.generator -g random_pipeline -o $(BIN)/$(ID) \
+	-e stmt,assembly,static_library,c_header,registration,schedule \
 	-f random_pipeline target=$(HL_TARGET)-no_runtime auto_schedule=$(AUTO_SCHEDULE) \
 	seed=$(PIPELINE_SEED) max_stages=$(PIPELINE_STAGES) \
 	$(GEN_GEN_ARGS) 2> $(BIN)/$(ID)/stderr.txt > $(BIN)/$(ID)/stdout.txt
@@ -54,6 +56,16 @@ clean:
 
 $(BIN)/$(ID)/times.txt: $(BIN)/$(ID)/test
 	$(BIN)/$(ID)/test > $(BIN)/$(ID)/times.txt
+	@cat $(BIN)/$(ID)/times.txt
 
 build: $(BIN)/$(ID)/test
 bench: $(BIN)/$(ID)/times.txt
+
+autotune: $(BIN)/random_pipeline.generator $(AUTOSCHED_BIN)/featurization_to_sample $(AUTOSCHED_BIN)/get_host_target $(AUTOSCHED_BIN)/retrain_cost_model $(AUTOSCHED_BIN)/libauto_schedule.so $(AUTOSCHED_SRC)/autotune_loop.sh
+	bash $(AUTOSCHED_SRC)/autotune_loop.sh \
+		$(BIN)/random_pipeline.generator \
+		random_pipeline \
+		"" \
+		$(AUTOSCHED_SRC)/baseline.weights \
+		$(AUTOSCHED_BIN) \
+		$(HALIDE_DISTRIB_PATH)
