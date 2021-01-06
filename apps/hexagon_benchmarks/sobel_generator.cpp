@@ -1,3 +1,9 @@
+/* ==================================================================================== */
+/*     Copyright (c) 2016-2020 QUALCOMM Technologies, Inc. and/or its subsidiaries.     */
+/*                           All Rights Reserved.                                       */
+/*                  QUALCOMM Confidential and Proprietary                               */
+/* ==================================================================================== */
+
 #include "Halide.h"
 
 using namespace Halide;
@@ -10,11 +16,19 @@ public:
     GeneratorParam<bool> use_parallel_sched{"use_parallel_sched", true};
     GeneratorParam<bool> use_prefetch_sched{"use_prefetch_sched", true};
 
+    template<typename T>
+    Func repeat_edge_x(const T &f) {
+        Expr width = f.dim(0).extent();
+        Expr x_min = f.dim(0).min();
+        return BoundaryConditions::repeat_edge(f, {{x_min, width}, {Expr(), Expr()}});
+    }
+
     void generate() {
-        bounded_input(x, y) = BoundaryConditions::repeat_edge(input)(x, y);
+        Expr height = input.height();
+        bounded_input(x, y) = repeat_edge_x(input)(x, y);
 
         Func input_16{"input_16"};
-        input_16(x, y) = cast<uint16_t>(bounded_input(x, y));
+        input_16(x, y) = cast<uint16_t>(bounded_input(x, clamp(y, 0, height - 1)));
 
         sobel_x_avg(x, y) = input_16(x - 1, y) + 2 * input_16(x, y) + input_16(x + 1, y);
         sobel_x(x, y) = absd(sobel_x_avg(x, y - 1), sobel_x_avg(x, y + 1));
@@ -28,24 +42,36 @@ public:
     }
 
     void schedule() {
-        Var xi{"xi"}, yi{"yi"};
-
         input.dim(0).set_min(0);
         input.dim(1).set_min(0);
+        output.dim(0).set_min(0);
+        output.dim(1).set_min(0);
 
-        if (get_target().has_feature(Target::HVX)) {
-            const int vector_size = 128;
-            Expr input_stride = input.dim(1).stride();
-            input.dim(1).set_stride((input_stride / vector_size) * vector_size);
+        int vector_size = natural_vector_size<uint8_t>();
+        if (get_target().features_any_of({ Target::HVX_128})) {
+            vector_size = get_target().has_feature(Target::HVX_128) ? 128 : 64;
+        }
+        Expr input_stride = input.dim(1).stride();
+        Expr output_stride = output.dim(1).stride();
 
-            Expr output_stride = output.dim(1).stride();
-            output.dim(1).set_stride((output_stride / vector_size) * vector_size);
+        input.dim(1).set_stride((input_stride / vector_size) * vector_size);
+        output.dim(1).set_stride((output_stride / vector_size) * vector_size);
+
+        input.set_host_alignment(vector_size);
+        output.set_host_alignment(vector_size);
+
+        Var xi{"xi"}, yi{"yi"};
+
+        if (get_target().features_any_of({ Target::HVX_128})) {
+            Expr ht = output.dim(1).extent();
+
             bounded_input
                 .compute_at(Func(output), y)
                 .align_storage(x, 128)
                 .vectorize(x, vector_size, TailStrategy::RoundUp);
             output
                 .hexagon()
+                .split(y, yo, y, ht / 2)
                 .tile(x, y, xi, yi, vector_size, 4, TailStrategy::RoundUp)
                 .vectorize(xi)
                 .unroll(yi);
@@ -53,19 +79,24 @@ public:
                 output.prefetch(input, y, 2);
             }
             if (use_parallel_sched) {
-                Var yo;
-                output.split(y, yo, y, 128).parallel(yo);
+                output.parallel(yo);
             }
         } else {
-            const int vector_size = natural_vector_size<uint8_t>();
+            // optimized while testing for ARM "host"
+            bounded_input
+                .compute_at(Func(output), y)
+                .vectorize(x, vector_size, TailStrategy::RoundUp);
             output
-                .vectorize(x, vector_size)
-                .parallel(y, 16);
+                .split(y, yo, y, 16)
+                .tile(x, y, xi, yi, vector_size * 2, 4, TailStrategy::RoundUp)
+                .vectorize(xi)
+                .parallel(yo)
+                .unroll(yi);
         }
     }
 
 private:
-    Var x{"x"}, y{"y"};
+    Var x{"x"}, y{"y"}, yo{"yo"};
     Func sobel_x_avg{"sobel_x_avg"}, sobel_y_avg{"sobel_y_avg"};
     Func sobel_x{"sobel_x"}, sobel_y{"sobel_y"};
     Func bounded_input{"bounded_input"};

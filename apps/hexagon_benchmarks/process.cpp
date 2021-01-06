@@ -15,8 +15,8 @@ void usage(char *prg_name) {
 
 int main(int argc, char **argv) {
     // Set some defaults first.
-    const int W = 1024;
-    const int H = 1024;
+    const int W = 3840;
+    const int H = 2160;
     int iterations = 10;
 
     // Process command line args.
